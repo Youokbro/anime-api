@@ -8,19 +8,20 @@ app.use((req, res, next) => {
   next()
 })
 
-// Try multiple providers
-const PROVIDERS = ['AnimePahe', 'AnimeKai', 'KickAssAnime', 'AnimeSaturn']
+const PROVIDERS = { AnimePahe: 'AnimePahe', AnimeKai: 'AnimeKai', KickAssAnime: 'KickAssAnime', AnimeSaturn: 'AnimeSaturn' }
 
 app.get('/search', async (req, res) => {
   try {
     const q = req.query.q
     if (!q) return res.status(400).json({ error: 'missing q' })
 
-    for (const name of PROVIDERS) {
+    for (const [name, Class] of Object.entries(PROVIDERS)) {
       try {
-        const p = new ANIME[name]()
+        const p = new ANIME[Class]()
         const data = await p.search(q)
         if (data && data.results && data.results.length > 0) {
+          data.results.forEach(r => r._provider = name)
+          data._provider = name
           return res.json(data)
         }
       } catch (e) { /* try next */ }
@@ -32,10 +33,12 @@ app.get('/search', async (req, res) => {
 app.get('/info', async (req, res) => {
   try {
     const id = req.query.id
-    const prov = req.query.provider || 'AnimePahe'
+    const prov = req.query.provider || 'AnimeSaturn'
     if (!id) return res.status(400).json({ error: 'missing id' })
+    if (!ANIME[prov]) return res.status(400).json({ error: 'invalid provider' })
     const p = new ANIME[prov]()
     const data = await p.fetchAnimeInfo(id)
+    if (!data) return res.json({ id, episodes: [] })
     const eps = (data.episodes || []).map((ep, i) => ({
       id: ep.id,
       number: ep.number || i + 1,
@@ -48,8 +51,9 @@ app.get('/info', async (req, res) => {
 app.get('/watch', async (req, res) => {
   try {
     const id = req.query.id
-    const prov = req.query.provider || 'AnimePahe'
+    const prov = req.query.provider || 'AnimeSaturn'
     if (!id) return res.status(400).json({ error: 'missing id' })
+    if (!ANIME[prov]) return res.status(400).json({ error: 'invalid provider' })
     const p = new ANIME[prov]()
     const data = await p.fetchEpisodeSources(id)
     const sources = (data.sources || []).map(s => ({
