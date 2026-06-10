@@ -14,7 +14,9 @@ app.get('/search', async (req, res) => {
   try {
     const q = req.query.q
     if (!q) return res.status(400).json({ error: 'missing q' })
-    for (const name of PROVIDERS) {
+    const force = req.query._force
+    const list = force ? [force] : PROVIDERS
+    for (const name of list) {
       try {
         const p = new ANIME[name]()
         const data = await p.search(q)
