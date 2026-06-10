@@ -23,7 +23,9 @@ app.get('/search', async (req, res) => {
         if (data && data.results && data.results.length > 0) {
           return res.json({ ...data, _provider: name })
         }
-      } catch (e) {}
+      } catch (e) {
+        if (force) return res.json({ results: [], _error: e.message, _provider: name })
+      }
     }
     res.json({ results: [] })
   } catch (e) { res.status(500).json({ error: e.message }) }
