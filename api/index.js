@@ -8,7 +8,7 @@ app.use((req, res, next) => {
   next()
 })
 
-const PROVIDERS = ['AnimePahe', 'AnimeKai', 'KickAssAnime', 'AnimeSaturn']
+const PROVIDERS = ['AnimePahe', 'AnimeKai', 'KickAssAnime', 'AnimeSama', 'AnimeSaturn']
 
 app.get('/search', async (req, res) => {
   try {
@@ -58,8 +58,9 @@ app.get('/watch', async (req, res) => {
       quality: s.quality || 'default',
       isM3U8: s.url?.includes('.m3u8')
     }))
-    const refMap = { AnimeSaturn: 'https://www.animesaturn.cx', AnimePahe: 'https://animepahe.ru', AnimeKai: 'https://animekai.to', KickAssAnime: 'https://kickassanime.am' }
-    res.json({ sources, tracks: data.subtitles || [], referer: data.referer || refMap[prov] || '' })
+    const REF_MAP = { AnimeSaturn: 'https://www.animesaturn.cx', AnimeSama: 'https://anime-sama.org', AnimePahe: 'https://animepahe.ru', AnimeKai: 'https://animekai.to', KickAssAnime: 'https://kickassanime.am' }
+    const referer = data.headers?.Referer || REF_MAP[prov] || ''
+    res.json({ sources, tracks: data.subtitles || [], referer })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
