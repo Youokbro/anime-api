@@ -8,23 +8,20 @@ app.use((req, res, next) => {
   next()
 })
 
-const PROVIDERS = { AnimePahe: 'AnimePahe', AnimeKai: 'AnimeKai', KickAssAnime: 'KickAssAnime', AnimeSaturn: 'AnimeSaturn' }
+const PROVIDERS = ['AnimePahe', 'AnimeKai', 'KickAssAnime', 'AnimeSaturn']
 
 app.get('/search', async (req, res) => {
   try {
     const q = req.query.q
     if (!q) return res.status(400).json({ error: 'missing q' })
-
-    for (const [name, Class] of Object.entries(PROVIDERS)) {
+    for (const name of PROVIDERS) {
       try {
-        const p = new ANIME[Class]()
+        const p = new ANIME[name]()
         const data = await p.search(q)
         if (data && data.results && data.results.length > 0) {
-          data.results.forEach(r => r._provider = name)
-          data._provider = name
-          return res.json(data)
+          return res.json({ ...data, _provider: name })
         }
-      } catch (e) { /* try next */ }
+      } catch (e) {}
     }
     res.json({ results: [] })
   } catch (e) { res.status(500).json({ error: e.message }) }
