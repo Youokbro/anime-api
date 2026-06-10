@@ -58,7 +58,8 @@ app.get('/watch', async (req, res) => {
       quality: s.quality || 'default',
       isM3U8: s.url?.includes('.m3u8')
     }))
-    res.json({ sources, tracks: data.subtitles || [], referer: data.referer || '' })
+    const refMap = { AnimeSaturn: 'https://www.animesaturn.cx', AnimePahe: 'https://animepahe.ru', AnimeKai: 'https://animekai.to', KickAssAnime: 'https://kickassanime.am' }
+    res.json({ sources, tracks: data.subtitles || [], referer: data.referer || refMap[prov] || '' })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
