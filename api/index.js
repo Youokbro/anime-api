@@ -8,7 +8,7 @@ app.use((req, res, next) => {
   next()
 })
 
-const PROVIDERS = ['Hianime', 'AnimePahe', 'AnimeKai', 'KickAssAnime', 'AnimeSaturn', 'AnimeUnity', 'AnimeSama']
+const PROVIDERS = ['AnimeSaturn', 'AnimeUnity', 'AnimeKai', 'KickAssAnime', 'AnimePahe']
 const WORKER_FETCH = 'https://anim-proxy.ahaantadi.workers.dev/fetch'
 const REF_MAP = {
   AnimeSaturn: 'https://www.animesaturn.cx',
@@ -46,11 +46,11 @@ function createProxyAdapter() {
   }
 }
 
-function withProxy(providerName) {
+function withProxy(providerName, timeoutMs) {
   var p = new ANIME[providerName]()
   if (p.client && p.client.defaults) {
     p.client.defaults.adapter = createProxyAdapter()
-    p.client.defaults.timeout = 15000
+    p.client.defaults.timeout = timeoutMs || 8000
   }
   return p
 }
@@ -84,16 +84,35 @@ app.get('/search', async (req, res) => {
     var q = req.query.q
     if (!q) return res.status(400).json({ error: 'missing q' })
     var force = req.query._force
-    var list = force ? [force] : PROVIDERS.filter(function(n) { return n !== 'AnimeSama' })
-    for (var i = 0; i < list.length; i++) {
+    if (force) {
       try {
-        var p = withProxy(list[i])
+        var p = withProxy(force)
         var data = await p.search(q)
-        if (data && data.results && data.results.length > 0) {
-          return res.json({ ...data, _provider: list[i] })
-        }
+        return res.json({ ...data, _provider: force })
       } catch (e) {
-        if (force) return res.json({ results: [], _error: e.message, _provider: force })
+        return res.json({ results: [], _error: e.message, _provider: force })
+      }
+    }
+    // Try all providers in parallel, return first with results
+    var tasks = PROVIDERS.map(function(name) {
+      return (async function() {
+        try {
+          var p = withProxy(name, 5000)
+          var data = await p.search(q)
+          if (data && data.results && data.results.length > 0) return { data: data, provider: name }
+        } catch (e) { /* skip */ }
+        return null
+      })()
+    })
+    var any = await Promise.race(tasks.map(function(t) {
+      return t.then(function(r) { if (r) return r; throw null })
+    })).catch(function() { return null })
+    if (any) return res.json({ ...any.data, _provider: any.provider })
+    // Wait for all and return best effort
+    var settled = await Promise.allSettled(tasks)
+    for (var i = 0; i < settled.length; i++) {
+      if (settled[i].value && settled[i].value.data) {
+        return res.json({ ...settled[i].value.data, _provider: settled[i].value.provider })
       }
     }
     res.json({ results: [] })
