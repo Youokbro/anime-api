@@ -8,7 +8,7 @@ app.use((req, res, next) => {
   next()
 })
 
-const PROVIDERS = ['AnimeSaturn', 'AnimeUnity', 'AnimeKai', 'KickAssAnime', 'AnimePahe']
+const PROVIDERS = ['Hianime', 'AnimePahe', 'AnimeSaturn', 'AnimeUnity', 'AnimeKai', 'KickAssAnime']
 const WORKER_FETCH = 'https://anim-proxy.ahaantadi.workers.dev/fetch'
 const REF_MAP = {
   AnimeSaturn: 'https://www.animesaturn.cx',
