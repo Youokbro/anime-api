@@ -1,7 +1,10 @@
 import express from 'express'
 import { ANIME } from '@consumet/extensions'
+import torrentRouter from './torrent.js'
+import seedrRouter from './seedr.js'
 
 const app = express()
+app.use(express.json())
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*')
   res.header('Content-Type', 'application/json')
@@ -181,5 +184,8 @@ app.get('/watch', async (req, res) => {
     res.json({ sources: allSources, tracks: allTracks, _tried: tried })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
+
+app.use('/torrent', torrentRouter)
+app.use('/seedr', seedrRouter)
 
 export default app
