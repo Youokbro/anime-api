@@ -67,6 +67,14 @@ router.get('/hls', async function(req, res) {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+router.delete('/task/:id', async function(req, res) {
+  try {
+    var taskId = req.params.id
+    var result = await seedrFetch('DELETE', '/tasks/' + taskId)
+    res.status(result.status).json(result.data)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 router.post('/delete', async function(req, res) {
   try {
     var items = req.body.items || req.query.items
@@ -74,6 +82,37 @@ router.post('/delete', async function(req, res) {
     if (typeof items === 'string') items = JSON.parse(items)
     var result = await seedrFetch('POST', '/fs/batch/delete', { delete_arr: JSON.stringify(items) })
     res.json(result.data)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.post('/cleanup', async function(req, res) {
+  try {
+    var root = await seedrFetch('GET', '/fs/folder/0/contents')
+    if (!root.data) return res.json({ ok: true, deleted: 0 })
+    var data = root.data
+    var count = 0
+    // Delete active torrents one by one via task endpoint
+    var torrents = data.torrents || []
+    for (var i = 0; i < torrents.length; i++) {
+      var tid = torrents[i].id
+      if (tid) {
+        try {
+          await seedrFetch('DELETE', '/tasks/' + tid)
+          count++
+        } catch (e) {}
+      }
+    }
+    // Batch delete folders, files
+    var batchItems = []
+    ;(data.folders || []).forEach(function(f) { batchItems.push({ type: 'folder', id: f.id }) })
+    ;(data.files || []).forEach(function(f) { batchItems.push({ type: 'file', id: f.id }) })
+    if (batchItems.length) {
+      try {
+        await seedrFetch('POST', '/fs/batch/delete', { delete_arr: JSON.stringify(batchItems) })
+        count += batchItems.length
+      } catch (e) {}
+    }
+    res.json({ ok: true, deleted: count })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
