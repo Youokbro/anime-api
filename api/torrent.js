@@ -8,6 +8,22 @@ router.use(function(req, res, next) {
 
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
+function normalizeSize(str) {
+  if (!str || str === 'unknown') return 0
+  str = str.replace(/,/g, '').trim()
+  var m = str.match(/^([\d.]+)\s*(GiB|GB|MiB|MB|KiB|KB|B)?$/i)
+  if (m) {
+    var n = parseFloat(m[1])
+    var u = (m[2] || '').toLowerCase()
+    if (u === 'gib' || u === 'gb') return Math.round(n * 1024)
+    if (u === 'mib' || u === 'mb') return Math.round(n)
+    if (u === 'kib' || u === 'kb') return Math.round(n / 1024)
+    if (u === 'b') return Math.round(n / (1024 * 1024))
+  }
+  var n = parseFloat(str)
+  return isNaN(n) ? 0 : Math.round(n)
+}
+
 async function fetchText(url, ref) {
   var r = await fetch(url, { headers: { 'User-Agent': UA, 'Referer': ref || 'https://www.google.com/' } })
   return r.text()
@@ -46,7 +62,7 @@ async function searchNyaa(query) {
     results.push({
       title: title,
       magnet: magnetLink[1],
-      size: sizeM ? sizeM[1].trim() : 'unknown',
+      size: normalizeSize(sizeM ? sizeM[1].trim() : 'unknown'),
       seeders: seedM ? parseInt(seedM[1].replace(/,/g, '')) : 0,
       leechers: leechM ? parseInt(leechM[1].replace(/,/g, '')) : 0,
       quality: quality,
@@ -86,7 +102,7 @@ async function search1337x(query) {
       title: name,
       magnet: null,
       detailUrl: 'https://1337x.to' + nameM[1],
-      size: sizeM ? sizeM[1].trim() : 'unknown',
+      size: normalizeSize(sizeM ? sizeM[1].trim() : 'unknown'),
       seeders: seedM ? parseInt(seedM[1].replace(/,/g, '')) : 0,
       leechers: leechM ? parseInt(leechM[1].replace(/,/g, '')) : 0,
       quality: quality,
@@ -137,7 +153,7 @@ async function searchTokyoTosho(query) {
     results.push({
       title: title,
       magnet: titleM[1],
-      size: sizeM ? sizeM[1].trim() : 'unknown',
+      size: normalizeSize(sizeM ? sizeM[1].trim() : 'unknown'),
       seeders: seedM ? parseInt(seedM[1].replace(/,/g, '')) : 0,
       leechers: leechM ? parseInt(leechM[1].replace(/,/g, '')) : 0,
       quality: quality,
