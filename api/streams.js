@@ -297,41 +297,52 @@ router.get('/mf-proxy', async function(req, res) {
   }
 })
 
-// ===== MediaFlow + VixSrc (passes vixsrc.to TV/movie URL through MediaFlow's VixCloud extractor) =====
+// ===== MediaFlow + VixSrc (uses our own VixSrc extraction + MediaFlow HLS proxy) =====
 router.get('/mf-vixsrc', async function(req, res) {
   try {
     var { tmdbId, season, episode, type } = req.query
     var mediaType = type || 'tv'
     var BASE = 'https://vixsrc.to'
 
-    // Pass the movie/TV page URL directly to MediaFlow's VixCloud extractor
-    var pageUrl = mediaType === 'movie'
-      ? BASE + '/movie/' + tmdbId
-      : BASE + '/tv/' + tmdbId + '/' + season + '/' + episode
+    // Step 1: Get embed path from vixsrc API (same as our VixSrc provider)
+    var apiUrl = mediaType === 'movie'
+      ? BASE + '/api/movie/' + tmdbId
+      : BASE + '/api/tv/' + tmdbId + '/' + season + '/' + episode
 
-    var mfUrl = MF_BASE + '/extractor/video?host=VixCloud&d=' + encodeURIComponent(pageUrl) + '&api_password=' + MF_PASS + '&redirect_stream=true'
+    var apiResp = await fetchWithTimeout(apiUrl, {
+      headers: { 'User-Agent': UA, 'Accept': 'application/json, text/javascript, */*; q=0.01' }
+    }, 6000)
+    var apiData = await apiResp.json()
+    var embedPath = apiData && apiData.src
+    if (!embedPath) return res.json({ sources: [] })
+
+    // Step 2: Fetch embed page to extract token/expires/playlist
+    var embedResp = await fetchWithTimeout(BASE + embedPath, {
+      headers: { 'User-Agent': UA, 'Referer': BASE + '/', 'Origin': BASE }
+    }, 6000)
+    var html = await embedResp.text()
+
+    var tokenM = html.match(/var\s+token\s*=\s*['"]([^'"]+)['"]/)
+    var expiresM = html.match(/var\s+expires\s*=\s*['"]([^'"]+)['"]/)
+    var playlistM = html.match(/var\s+playlist\s*=\s*['"]([^'"]+)['"]/)
+    if (!tokenM || !expiresM || !playlistM) return res.json({ sources: [] })
+
+    var masterUrl = playlistM[1] + '?token=' + tokenM[1] + '&expires=' + expiresM[1] + '&h=1'
+
+    // Step 3: Proxy the HLS master through MediaFlow for better playback
+    var mfUrl = MF_BASE + '/proxy/hls/manifest.m3u8?d=' + encodeURIComponent(masterUrl) + '&api_password=' + MF_PASS + '&h_Referer=' + encodeURIComponent(BASE + '/') + '&h_Origin=' + encodeURIComponent(BASE)
 
     var mfResp = await fetchWithTimeout(mfUrl, {
       headers: { 'User-Agent': UA },
       redirect: 'manual'
-    }, 12000)
+    }, 10000)
 
-    if (mfResp.status >= 300 && mfResp.status < 400) {
-      var location = mfResp.headers.get('location')
-      if (location) {
-        return res.json({ sources: [{ url: location, quality: 'Auto', type: 'hls' }], tracks: [] })
-      }
+    if (mfResp.ok) {
+      return res.json({ sources: [{ url: mfUrl, quality: 'Auto', type: 'hls' }], tracks: [] })
     }
 
-    var mfData = await mfResp.json()
-    if (mfData && mfData.url) {
-      return res.json({ sources: [{ url: mfData.url, quality: mfData.quality || 'Auto', type: mfData.type || 'hls' }], tracks: [] })
-    }
-    if (mfData && mfData.sources && mfData.sources.length) {
-      return res.json(mfData)
-    }
-
-    res.json({ sources: [] })
+    // Fallback: return the direct HLS URL
+    res.json({ sources: [{ url: masterUrl, quality: 'Auto', type: 'hls' }], tracks: [] })
   } catch (e) {
     res.json({ sources: [], error: e.message })
   }
