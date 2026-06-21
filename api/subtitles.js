@@ -115,9 +115,39 @@ router.get('/', async function(req, res) {
       } catch {}
     }
 
+    // Proxy VTT through our domain to avoid CORS issues
+    var baseUrl = req.protocol + '://' + req.get('host')
+    for (var ti = 0; ti < allTracks.length; ti++) {
+      if (allTracks[ti].file && allTracks[ti].file.indexOf('//') > 0) {
+        allTracks[ti].file = baseUrl + '/subtitles/proxy?url=' + encodeURIComponent(allTracks[ti].file)
+      }
+    }
+
     res.json({ tracks: allTracks })
   } catch (e) {
     res.json({ tracks: [], error: e.message })
+  }
+})
+
+// Proxy VTT subtitle files through our backend to avoid CORS
+router.get('/proxy', async function(req, res) {
+  var url = req.query.url
+  if (!url) return res.status(400).end()
+  try {
+    var resp = await fetch(url, {
+      headers: { 'User-Agent': UA },
+      signal: AbortSignal.timeout(10000)
+    })
+    if (!resp.ok) return res.status(502).end()
+    var vtt = await resp.text()
+    res.set({
+      'Content-Type': 'text/vtt; charset=utf-8',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'public, max-age=86400'
+    })
+    res.send(vtt)
+  } catch {
+    res.status(502).end()
   }
 })
 
