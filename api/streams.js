@@ -44,7 +44,7 @@ router.get('/vidlink', async function(req, res) {
       headers: { 'User-Agent': UA }
     }, 6000)
     var encData = await encResp.json()
-    var encrypted = encData.text
+    var encrypted = encData.result
     if (!encrypted) return res.json({ sources: [] })
 
     var url = mediaType === 'movie'
@@ -55,10 +55,21 @@ router.get('/vidlink', async function(req, res) {
       headers: { 'User-Agent': UA, 'Referer': 'https://vidlink.pro' }
     }, 6000)
     var streamData = await streamResp.json()
-    var playlist = streamData && streamData.data && streamData.data.stream && streamData.data.stream.playlist
+    var playlist = streamData && streamData.stream && streamData.stream.playlist
     if (!playlist) return res.json({ sources: [] })
 
-    res.json({ sources: [{ url: playlist, quality: 'Auto', type: 'hls' }], tracks: [] })
+    // Extract captions if available
+    var tracks = []
+    if (streamData.stream && streamData.stream.captions) {
+      for (var ci = 0; ci < streamData.stream.captions.length; ci++) {
+        var cap = streamData.stream.captions[ci]
+        if (cap.url && cap.language) {
+          tracks.push({ file: cap.url, label: cap.language })
+        }
+      }
+    }
+
+    res.json({ sources: [{ url: playlist, quality: 'Auto', type: 'hls' }], tracks: tracks })
   } catch (e) {
     res.json({ sources: [], error: e.message })
   }
@@ -323,7 +334,7 @@ router.get('/mf-vixsrc', async function(req, res) {
       headers: { 'User-Agent': UA }
     }, 6000)
     var encData = await encResp.json()
-    var encrypted = encData && encData.text
+    var encrypted = encData && encData.result
     if (!encrypted) return res.json({ sources: [] })
 
     var vidUrl = mediaType === 'movie'
@@ -334,8 +345,19 @@ router.get('/mf-vixsrc', async function(req, res) {
       headers: { 'User-Agent': UA, 'Referer': 'https://vidlink.pro' }
     }, 6000)
     var streamData = await streamResp.json()
-    var playlist = streamData && streamData.data && streamData.data.stream && streamData.data.stream.playlist
+    var playlist = streamData && streamData.stream && streamData.stream.playlist
     if (!playlist) return res.json({ sources: [] })
+
+    // Extract captions
+    var tracks = []
+    if (streamData.stream && streamData.stream.captions) {
+      for (var ci = 0; ci < streamData.stream.captions.length; ci++) {
+        var cap = streamData.stream.captions[ci]
+        if (cap.url && cap.language) {
+          tracks.push({ file: cap.url, label: cap.language })
+        }
+      }
+    }
 
     // Step 2: Proxy the HLS through MediaFlow for better playback
     var mfUrl = MF_BASE + '/proxy/hls/manifest.m3u8?d=' + encodeURIComponent(playlist) + '&api_password=' + MF_PASS + '&h_Referer=' + encodeURIComponent('https://vidlink.pro')
@@ -346,11 +368,11 @@ router.get('/mf-vixsrc', async function(req, res) {
     }, 10000)
 
     if (mfResp.ok) {
-      return res.json({ sources: [{ url: mfUrl, quality: 'Auto', type: 'hls' }], tracks: [] })
+      return res.json({ sources: [{ url: mfUrl, quality: 'Auto', type: 'hls' }], tracks: tracks })
     }
 
-    // Fallback: return the direct VidLink URL
-    res.json({ sources: [{ url: playlist, quality: 'Auto', type: 'hls' }], tracks: [] })
+    // Fallback: return the direct VidLink URL with subs
+    res.json({ sources: [{ url: playlist, quality: 'Auto', type: 'hls' }], tracks: tracks })
   } catch (e) {
     res.json({ sources: [], error: e.message })
   }
