@@ -297,33 +297,24 @@ router.get('/mf-proxy', async function(req, res) {
   }
 })
 
-// ===== MediaFlow + VixSrc (VixSrc extraction proxied through MediaFlow) =====
+// ===== MediaFlow + VixSrc (passes vixsrc.to TV/movie URL through MediaFlow's VixCloud extractor) =====
 router.get('/mf-vixsrc', async function(req, res) {
   try {
     var { tmdbId, season, episode, type } = req.query
     var mediaType = type || 'tv'
     var BASE = 'https://vixsrc.to'
 
-    var apiUrl = mediaType === 'movie'
-      ? BASE + '/api/movie/' + tmdbId
-      : BASE + '/api/tv/' + tmdbId + '/' + season + '/' + episode
+    // Pass the movie/TV page URL directly to MediaFlow's VixCloud extractor
+    var pageUrl = mediaType === 'movie'
+      ? BASE + '/movie/' + tmdbId
+      : BASE + '/tv/' + tmdbId + '/' + season + '/' + episode
 
-    var apiResp = await fetchWithTimeout(apiUrl, {
-      headers: { 'User-Agent': UA, 'Accept': 'application/json, text/javascript, */*; q=0.01' }
-    }, 6000)
-    var apiData = await apiResp.json()
-    var embedPath = apiData && apiData.src
-    if (!embedPath) return res.json({ sources: [] })
+    var mfUrl = MF_BASE + '/extractor/video?host=VixCloud&d=' + encodeURIComponent(pageUrl) + '&api_password=' + MF_PASS + '&redirect_stream=true'
 
-    // Pass the full embed URL to MediaFlow's VixCloud extractor
-    var embedUrl = BASE + embedPath
-    var mfUrl = MF_BASE + '/extractor/video?host=VixCloud&d=' + encodeURIComponent(embedUrl) + '&api_password=' + MF_PASS + '&redirect_stream=true'
-
-    // Try to get the extracted stream (may redirect)
     var mfResp = await fetchWithTimeout(mfUrl, {
       headers: { 'User-Agent': UA },
       redirect: 'manual'
-    }, 10000)
+    }, 12000)
 
     if (mfResp.status >= 300 && mfResp.status < 400) {
       var location = mfResp.headers.get('location')
@@ -332,7 +323,6 @@ router.get('/mf-vixsrc', async function(req, res) {
       }
     }
 
-    // Fallback: return the JSON response
     var mfData = await mfResp.json()
     if (mfData && mfData.url) {
       return res.json({ sources: [{ url: mfData.url, quality: mfData.quality || 'Auto', type: mfData.type || 'hls' }], tracks: [] })
