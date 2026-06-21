@@ -42,7 +42,7 @@ router.get('/', async function(req, res) {
       if (parentImdbId) osUrl += '&parent_imdb_id=' + parentImdbId
 
       var osResp = await fetch(osUrl, {
-        headers: { 'User-Agent': UA },
+        headers: { 'User-Agent': UA, 'Referer': 'https://miruro.tv/', 'Origin': 'https://miruro.tv' },
         signal: AbortSignal.timeout(8000)
       })
 
@@ -61,7 +61,7 @@ router.get('/', async function(req, res) {
           if (fileId) {
             var dlResp = await fetch(MIRURO_API + '/subtitles/download', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'User-Agent': UA },
+              headers: { 'Content-Type': 'application/json', 'User-Agent': UA, 'Referer': 'https://miruro.tv/', 'Origin': 'https://miruro.tv' },
               body: JSON.stringify({ file_id: fileId }),
               signal: AbortSignal.timeout(8000)
             })
@@ -80,20 +80,30 @@ router.get('/', async function(req, res) {
     // 2) Fallback: extract captions from VidLink provider (TMDB-Embed-API)
     if (!allTracks.length && tmdbId && season && episode) {
       try {
-        var vlUrl = 'https://player.vidlink.pro/api/tv/' + tmdbId + '?season=' + season + '&episode=' + episode + '&auto=1'
-        var vlResp = await fetch(vlUrl, {
-          headers: { 'User-Agent': UA, 'Referer': 'https://vidlink.pro/' },
-          signal: AbortSignal.timeout(8000)
+        var encResp = await fetch('https://enc-dec.app/api/enc-vidlink?text=' + tmdbId, {
+          headers: { 'User-Agent': UA },
+          signal: AbortSignal.timeout(5000)
         })
-        if (vlResp.ok) {
-          var vlData = await vlResp.json()
-          var stream = vlData && (vlData.stream || (vlData.data && vlData.data.stream))
-          if (stream && stream.captions && stream.captions.length) {
-            for (var ci = 0; ci < stream.captions.length; ci++) {
-              allTracks.push({
-                file: stream.captions[ci].file,
-                label: stream.captions[ci].label || 'English'
-              })
+        if (encResp.ok) {
+          var encData = await encResp.json()
+          var encrypted = encData && (encData.result || encData.text || '')
+          if (encrypted) {
+            var vlUrl = 'https://vidlink.pro/api/b/tv/' + encrypted + '/' + season + '/' + episode + '?multiLang=0'
+            var vlResp = await fetch(vlUrl, {
+              headers: { 'User-Agent': UA, 'Referer': 'https://vidlink.pro/' },
+              signal: AbortSignal.timeout(8000)
+            })
+            if (vlResp.ok) {
+              var vlData = await vlResp.json()
+              var streamData = vlData && (vlData.stream || (vlData.data && vlData.data.stream))
+              if (streamData && streamData.captions && streamData.captions.length) {
+                for (var ci = 0; ci < streamData.captions.length; ci++) {
+                  allTracks.push({
+                    file: streamData.captions[ci].file,
+                    label: streamData.captions[ci].label || 'English'
+                  })
+                }
+              }
             }
           }
         }
