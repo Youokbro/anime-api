@@ -11,7 +11,7 @@ RUN wget -O /usr/local/bin/mediaflow-proxy-light \
 
 RUN mkdir -p /etc/mediaflow
 
-COPY config.toml /etc/mediaflow/config.toml
+COPY mediaflow/config.toml /etc/mediaflow/config.toml
 
 RUN cat > /entrypoint.sh <<'SCRIPT'
 #!/bin/bash
