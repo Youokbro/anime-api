@@ -32,61 +32,75 @@ router.get('/', async function(req, res) {
       } catch {}
     }
 
-    // Try Miruro-API OpenSubtitles proxy
-    var osUrl = MIRURO_API + '/subtitles/search?languages=' + lang +
-      '&season_number=' + (season || 1) + '&episode_number=' + (episode || 1)
-    if (tmdbId) osUrl += '&tmdb_id=' + tmdbId
-    if (parentImdbId) osUrl += '&parent_imdb_id=' + parentImdbId
+    var allTracks = []
 
-    var osResp
+    // 1) Try Miruro-API OpenSubtitles proxy
     try {
-      osResp = await fetch(osUrl, {
+      var osUrl = MIRURO_API + '/subtitles/search?languages=' + lang +
+        '&season_number=' + (season || 1) + '&episode_number=' + (episode || 1)
+      if (tmdbId) osUrl += '&tmdb_id=' + tmdbId
+      if (parentImdbId) osUrl += '&parent_imdb_id=' + parentImdbId
+
+      var osResp = await fetch(osUrl, {
         headers: { 'User-Agent': UA },
         signal: AbortSignal.timeout(8000)
       })
-    } catch {
-      return res.json({ tracks: [] })
+
+      if (osResp.ok) {
+        var osData = await osResp.json()
+        var list = osData && osData.data ? osData.data : []
+        if (list.length) {
+          var best = list[0]
+          for (var i = 0; i < list.length; i++) {
+            var a = list[i].attributes || {}
+            if (a.subtitle_format === 'vtt') { best = list[i]; break }
+          }
+          var attrs = best.attributes || {}
+          var files = attrs.files || []
+          var fileId = files.length ? (files[0].file_id || 0) : 0
+          if (fileId) {
+            var dlResp = await fetch(MIRURO_API + '/subtitles/download', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'User-Agent': UA },
+              body: JSON.stringify({ file_id: fileId }),
+              signal: AbortSignal.timeout(8000)
+            })
+            if (dlResp.ok) {
+              var dlData = await dlResp.json()
+              var link = dlData && dlData.link
+              if (link) {
+                allTracks.push({ file: link, label: 'English (OpenSubtitles)' })
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+
+    // 2) Fallback: extract captions from VidLink provider (TMDB-Embed-API)
+    if (!allTracks.length && tmdbId && season && episode) {
+      try {
+        var vlUrl = 'https://player.vidlink.pro/api/tv/' + tmdbId + '?season=' + season + '&episode=' + episode + '&auto=1'
+        var vlResp = await fetch(vlUrl, {
+          headers: { 'User-Agent': UA, 'Referer': 'https://vidlink.pro/' },
+          signal: AbortSignal.timeout(8000)
+        })
+        if (vlResp.ok) {
+          var vlData = await vlResp.json()
+          var stream = vlData && (vlData.stream || (vlData.data && vlData.data.stream))
+          if (stream && stream.captions && stream.captions.length) {
+            for (var ci = 0; ci < stream.captions.length; ci++) {
+              allTracks.push({
+                file: stream.captions[ci].file,
+                label: stream.captions[ci].label || 'English'
+              })
+            }
+          }
+        }
+      } catch {}
     }
 
-    if (!osResp.ok) return res.json({ tracks: [] })
-
-    var osData = await osResp.json()
-    var list = osData && osData.data ? osData.data : []
-    if (!list.length) return res.json({ tracks: [] })
-
-    // Pick best subtitle (prefer VTT format)
-    var best = list[0]
-    for (var i = 0; i < list.length; i++) {
-      var a = list[i].attributes || {}
-      if (a.subtitle_format === 'vtt') { best = list[i]; break }
-    }
-
-    var attrs = best.attributes || {}
-    var files = attrs.files || []
-    var fileId = files.length ? (files[0].file_id || 0) : 0
-    if (!fileId) return res.json({ tracks: [] })
-
-    // Download the subtitle
-    var dlResp
-    try {
-      dlResp = await fetch(MIRURO_API + '/subtitles/download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'User-Agent': UA },
-        body: JSON.stringify({ file_id: fileId }),
-        signal: AbortSignal.timeout(8000)
-      })
-    } catch {
-      return res.json({ tracks: [] })
-    }
-
-    if (!dlResp.ok) return res.json({ tracks: [] })
-
-    var dlData = await dlResp.json()
-    var link = dlData && dlData.link
-    if (!link) return res.json({ tracks: [] })
-
-    var label = attrs.language || attrs.language_english || lang
-    res.json({ tracks: [{ file: link, label: 'English (OpenSubtitles)' }] })
+    res.json({ tracks: allTracks })
   } catch (e) {
     res.json({ tracks: [], error: e.message })
   }
