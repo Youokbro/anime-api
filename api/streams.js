@@ -268,4 +268,33 @@ router.get('/dahmermovies', async function(req, res) {
   }
 })
 
+// ===== MediaFlow Proxy (proxies any stream URL through MediaFlow) =====
+var MF_BASE = process.env.MEDIAFLOW_URL || 'https://anime-api-1-yj1f.onrender.com'
+var MF_PASS = process.env.MF_PASSWORD || 'ba2ddd746ce702f9126a8a309638e004'
+
+router.get('/mf-proxy', async function(req, res) {
+  try {
+    var { url, referer, type } = req.query
+    if (!url) return res.json({ sources: [], error: 'missing url' })
+
+    var isM3u8 = url.indexOf('.m3u8') > -1 || type === 'hls'
+    var proxyUrl
+
+    if (isM3u8) {
+      proxyUrl = MF_BASE + '/proxy/hls/manifest.m3u8?d=' + encodeURIComponent(url) + '&api_password=' + MF_PASS
+      if (referer) proxyUrl += '&h_Referer=' + encodeURIComponent(referer)
+    } else {
+      proxyUrl = MF_BASE + '/proxy/stream?d=' + encodeURIComponent(url) + '&api_password=' + MF_PASS
+      if (referer) proxyUrl += '&h_Referer=' + encodeURIComponent(referer)
+    }
+
+    res.json({
+      sources: [{ url: proxyUrl, quality: 'Auto', type: isM3u8 ? 'hls' : 'mp4', _provider: 'MediaFlow' }],
+      tracks: []
+    })
+  } catch (e) {
+    res.json({ sources: [], error: e.message })
+  }
+})
+
 export default router
