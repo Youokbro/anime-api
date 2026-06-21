@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: mediaflow-proxy-light
+    env: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: API_PASSWORD
+        sync: false
+    plan: free
