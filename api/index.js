@@ -3,6 +3,7 @@ import { ANIME } from '@consumet/extensions'
 import torrentRouter from './torrent.js'
 import seedrRouter from './seedr.js'
 import streamsRouter from './streams.js'
+import subtitlesRouter from './subtitles.js'
 
 const app = express()
 app.use(express.json())
@@ -209,5 +210,6 @@ app.get('/mal/score/:malId', async (req, res) => {
 app.use('/torrent', torrentRouter)
 app.use('/seedr', seedrRouter)
 app.use('/stream', streamsRouter)
+app.use('/subtitles', subtitlesRouter)
 
 export default app
