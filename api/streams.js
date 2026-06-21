@@ -2,6 +2,7 @@ import express from 'express'
 var router = express.Router()
 
 const TMDB_PROXY = 'https://miruro-api-navy.vercel.app/tmdb'
+const WORKER_FETCH = 'https://anim-proxy.ahaantadi.workers.dev/fetch'
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36'
 
 async function tmdbFetch(path) {
@@ -15,6 +16,22 @@ async function tmdbFetch(path) {
 
 function fetchWithTimeout(url, options, ms) {
   return fetch(url, { ...options, signal: AbortSignal.timeout(ms || 8000) })
+}
+
+async function proxyFetch(url, headers, ms) {
+  var bodyData = {
+    url: url,
+    method: 'get',
+    headers: headers || {},
+    responseType: 'text'
+  }
+  var resp = await fetch(WORKER_FETCH, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(bodyData),
+    signal: AbortSignal.timeout(ms || 12000)
+  })
+  return resp.text()
 }
 
 // ===== VidLink Provider (self-hosted, via enc-dec.app + vidlink.pro) =====
@@ -58,17 +75,15 @@ router.get('/vixsrc', async function(req, res) {
       ? BASE + '/api/movie/' + tmdbId
       : BASE + '/api/tv/' + tmdbId + '/' + season + '/' + episode
 
-    var apiResp = await fetchWithTimeout(apiUrl, {
-      headers: { 'User-Agent': UA, 'Accept': 'application/json, text/javascript, */*; q=0.01' }
-    }, 6000)
-    var apiData = await apiResp.json()
+    var apiHeaders = { 'User-Agent': UA, 'Accept': 'application/json, text/javascript, */*; q=0.01' }
+    var apiText = await proxyFetch(apiUrl, apiHeaders, 8000)
+    var apiData
+    try { apiData = JSON.parse(apiText) } catch { return res.json({ sources: [] }) }
     var embedPath = apiData && apiData.src
     if (!embedPath) return res.json({ sources: [] })
 
-    var embedResp = await fetchWithTimeout(BASE + embedPath, {
-      headers: { 'User-Agent': UA, 'Referer': BASE + '/', 'Origin': BASE }
-    }, 6000)
-    var html = await embedResp.text()
+    var embedHeaders = { 'User-Agent': UA, 'Referer': BASE + '/', 'Origin': BASE }
+    var html = await proxyFetch(BASE + embedPath, embedHeaders, 8000)
 
     var tokenM = html.match(/var\s+token\s*=\s*['"]([^'"]+)['"]/)
     var expiresM = html.match(/var\s+expires\s*=\s*['"]([^'"]+)['"]/)
@@ -309,18 +324,16 @@ router.get('/mf-vixsrc', async function(req, res) {
       ? BASE + '/api/movie/' + tmdbId
       : BASE + '/api/tv/' + tmdbId + '/' + season + '/' + episode
 
-    var apiResp = await fetchWithTimeout(apiUrl, {
-      headers: { 'User-Agent': UA, 'Accept': 'application/json, text/javascript, */*; q=0.01' }
-    }, 6000)
-    var apiData = await apiResp.json()
+    var apiHeaders = { 'User-Agent': UA, 'Accept': 'application/json, text/javascript, */*; q=0.01' }
+    var apiText = await proxyFetch(apiUrl, apiHeaders, 8000)
+    var apiData
+    try { apiData = JSON.parse(apiText) } catch { return res.json({ sources: [] }) }
     var embedPath = apiData && apiData.src
     if (!embedPath) return res.json({ sources: [] })
 
     // Step 2: Fetch embed page to extract token/expires/playlist
-    var embedResp = await fetchWithTimeout(BASE + embedPath, {
-      headers: { 'User-Agent': UA, 'Referer': BASE + '/', 'Origin': BASE }
-    }, 6000)
-    var html = await embedResp.text()
+    var embedHeaders = { 'User-Agent': UA, 'Referer': BASE + '/', 'Origin': BASE }
+    var html = await proxyFetch(BASE + embedPath, embedHeaders, 8000)
 
     var tokenM = html.match(/var\s+token\s*=\s*['"]([^'"]+)['"]/)
     var expiresM = html.match(/var\s+expires\s*=\s*['"]([^'"]+)['"]/)
