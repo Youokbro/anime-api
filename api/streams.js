@@ -312,38 +312,33 @@ router.get('/mf-proxy', async function(req, res) {
   }
 })
 
-// ===== MediaFlow + VixSrc (uses our own VixSrc extraction + MediaFlow HLS proxy) =====
+// ===== MediaFlow + VidLink (reliable VidLink extraction proxied through MediaFlow) =====
 router.get('/mf-vixsrc', async function(req, res) {
   try {
     var { tmdbId, season, episode, type } = req.query
     var mediaType = type || 'tv'
-    var BASE = 'https://vixsrc.to'
 
-    // Step 1: Get embed path from vixsrc API (same as our VixSrc provider)
-    var apiUrl = mediaType === 'movie'
-      ? BASE + '/api/movie/' + tmdbId
-      : BASE + '/api/tv/' + tmdbId + '/' + season + '/' + episode
+    // Step 1: Get VidLink HLS URL (this works reliably)
+    var encResp = await fetchWithTimeout('https://enc-dec.app/api/enc-vidlink?text=' + tmdbId, {
+      headers: { 'User-Agent': UA }
+    }, 6000)
+    var encData = await encResp.json()
+    var encrypted = encData && encData.text
+    if (!encrypted) return res.json({ sources: [] })
 
-    var apiHeaders = { 'User-Agent': UA, 'Accept': 'application/json, text/javascript, */*; q=0.01' }
-    var apiText = await proxyFetch(apiUrl, apiHeaders, 8000)
-    var apiData
-    try { apiData = JSON.parse(apiText) } catch { return res.json({ sources: [] }) }
-    var embedPath = apiData && apiData.src
-    if (!embedPath) return res.json({ sources: [] })
+    var vidUrl = mediaType === 'movie'
+      ? 'https://vidlink.pro/api/b/movie/' + encrypted + '?multiLang=0'
+      : 'https://vidlink.pro/api/b/tv/' + encrypted + '/' + season + '/' + episode + '?multiLang=0'
 
-    // Step 2: Fetch embed page to extract token/expires/playlist
-    var embedHeaders = { 'User-Agent': UA, 'Referer': BASE + '/', 'Origin': BASE }
-    var html = await proxyFetch(BASE + embedPath, embedHeaders, 8000)
+    var streamResp = await fetchWithTimeout(vidUrl, {
+      headers: { 'User-Agent': UA, 'Referer': 'https://vidlink.pro' }
+    }, 6000)
+    var streamData = await streamResp.json()
+    var playlist = streamData && streamData.data && streamData.data.stream && streamData.data.stream.playlist
+    if (!playlist) return res.json({ sources: [] })
 
-    var tokenM = html.match(/var\s+token\s*=\s*['"]([^'"]+)['"]/)
-    var expiresM = html.match(/var\s+expires\s*=\s*['"]([^'"]+)['"]/)
-    var playlistM = html.match(/var\s+playlist\s*=\s*['"]([^'"]+)['"]/)
-    if (!tokenM || !expiresM || !playlistM) return res.json({ sources: [] })
-
-    var masterUrl = playlistM[1] + '?token=' + tokenM[1] + '&expires=' + expiresM[1] + '&h=1'
-
-    // Step 3: Proxy the HLS master through MediaFlow for better playback
-    var mfUrl = MF_BASE + '/proxy/hls/manifest.m3u8?d=' + encodeURIComponent(masterUrl) + '&api_password=' + MF_PASS + '&h_Referer=' + encodeURIComponent(BASE + '/') + '&h_Origin=' + encodeURIComponent(BASE)
+    // Step 2: Proxy the HLS through MediaFlow for better playback
+    var mfUrl = MF_BASE + '/proxy/hls/manifest.m3u8?d=' + encodeURIComponent(playlist) + '&api_password=' + MF_PASS + '&h_Referer=' + encodeURIComponent('https://vidlink.pro')
 
     var mfResp = await fetchWithTimeout(mfUrl, {
       headers: { 'User-Agent': UA },
@@ -354,8 +349,8 @@ router.get('/mf-vixsrc', async function(req, res) {
       return res.json({ sources: [{ url: mfUrl, quality: 'Auto', type: 'hls' }], tracks: [] })
     }
 
-    // Fallback: return the direct HLS URL
-    res.json({ sources: [{ url: masterUrl, quality: 'Auto', type: 'hls' }], tracks: [] })
+    // Fallback: return the direct VidLink URL
+    res.json({ sources: [{ url: playlist, quality: 'Auto', type: 'hls' }], tracks: [] })
   } catch (e) {
     res.json({ sources: [], error: e.message })
   }
