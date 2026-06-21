@@ -116,7 +116,8 @@ router.get('/', async function(req, res) {
     }
 
     // Proxy VTT through our domain to avoid CORS issues
-    var baseUrl = req.protocol + '://' + req.get('host')
+    var proto = req.headers['x-forwarded-proto'] || req.protocol
+    var baseUrl = proto + '://' + req.get('host')
     for (var ti = 0; ti < allTracks.length; ti++) {
       if (allTracks[ti].file && allTracks[ti].file.indexOf('//') > 0) {
         allTracks[ti].file = baseUrl + '/subtitles/proxy?url=' + encodeURIComponent(allTracks[ti].file)
@@ -135,7 +136,7 @@ router.get('/proxy', async function(req, res) {
   if (!url) return res.status(400).end()
   try {
     var resp = await fetch(url, {
-      headers: { 'User-Agent': UA },
+      headers: { 'User-Agent': UA, 'Referer': 'https://vidlink.pro/' },
       signal: AbortSignal.timeout(10000)
     })
     if (!resp.ok) return res.status(502).end()
