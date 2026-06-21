@@ -98,9 +98,14 @@ router.get('/', async function(req, res) {
               var streamData = vlData && (vlData.stream || (vlData.data && vlData.data.stream))
               if (streamData && streamData.captions && streamData.captions.length) {
                 for (var ci = 0; ci < streamData.captions.length; ci++) {
+                  var cap = streamData.captions[ci]
+                  var capLang = (cap.language || cap.label || '').toLowerCase()
+                  var reqLang = (lang || 'en').toLowerCase()
+                  if (capLang && capLang.indexOf(reqLang) === -1 && reqLang.indexOf(capLang) === -1) continue
+                  if (cap.hasCorsRestrictions) continue
                   allTracks.push({
-                    file: streamData.captions[ci].file,
-                    label: streamData.captions[ci].label || 'English'
+                    file: cap.url || cap.file,
+                    label: cap.language || cap.label || 'English'
                   })
                 }
               }
