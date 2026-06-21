@@ -188,6 +188,23 @@ app.get('/watch', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+app.get('/mal/score/:malId', async (req, res) => {
+  try {
+    var malId = req.params.malId
+    if (!malId) return res.status(400).json({ error: 'missing malId' })
+    var resp = await fetch('https://api.jikan.moe/v4/anime/' + malId + '?fields=score', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AnimeStream/1.0)' }
+    })
+    if (resp.status !== 200) return res.status(resp.status).json({ error: 'Jikan error' })
+    var data = await resp.json()
+    var score = data.data && data.data.score
+    if (!score) return res.json({ score: null })
+    res.json({ score: score })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 app.use('/torrent', torrentRouter)
 app.use('/seedr', seedrRouter)
 
