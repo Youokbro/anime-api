@@ -2,7 +2,7 @@ import express from 'express'
 var router = express.Router()
 
 const TMDB_PROXY = 'https://miruro-api-navy.vercel.app/tmdb'
-const WORKER_FETCH = 'https://anim-proxy.ahaantadi.workers.dev/fetch'
+const WORKER_FETCH = 'https://anim-proxy-worker.ahaantadi.workers.dev/fetch'
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36'
 
 async function tmdbFetch(path) {
@@ -373,6 +373,162 @@ router.get('/mf-vixsrc', async function(req, res) {
 
     // Fallback: return the direct VidLink URL with subs
     res.json({ sources: [{ url: playlist, quality: 'Auto', type: 'hls' }], tracks: tracks })
+  } catch (e) {
+    res.json({ sources: [], error: e.message })
+  }
+})
+
+// ===== AnimeSaturn (via Consumet through CF Worker) =====
+router.get('/animesaturn', async function(req, res) {
+  try {
+    var { tmdbId, season, episode, type } = req.query
+    if (!tmdbId) return res.json({ sources: [] })
+    var mediaType = type || 'tv'
+
+    var showData
+    try {
+      showData = await tmdbFetch(mediaType + '/' + tmdbId)
+    } catch (e) {
+      return res.json({ sources: [], error: 'TMDB lookup failed' })
+    }
+
+    var searchTerms = [showData.name || showData.title, showData.original_name || showData.original_title].filter(Boolean)
+    if (!searchTerms.length) return res.json({ sources: [], error: 'No title' })
+    var seen = {}
+    searchTerms = searchTerms.filter(function(t) { return seen[t] ? false : (seen[t] = true) })
+
+    var animeId = null
+    for (var si = 0; si < searchTerms.length; si++) {
+      try {
+        var sr = await fetch('https://anime-api-nu-eight.vercel.app/search?q=' + encodeURIComponent(searchTerms[si]) + '&_force=AnimeSaturn', {
+          headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10000)
+        })
+        if (!sr.ok) continue
+        var sd = await sr.json()
+        var results = sd.results || []
+        if (results.length) { animeId = results[0].id; break }
+      } catch {}
+    }
+    if (!animeId) return res.json({ sources: [], error: 'Not found on AnimeSaturn' })
+
+    var ir = await fetch('https://anime-api-nu-eight.vercel.app/info?id=' + encodeURIComponent(animeId) + '&provider=AnimeSaturn', {
+      headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10000)
+    })
+    if (!ir.ok) return res.json({ sources: [], error: 'Info failed' })
+    var infoData = await ir.json()
+    var episodes = infoData.episodes || []
+    if (!episodes.length) return res.json({ sources: [], error: 'No episodes' })
+
+    var epNum = parseInt(episode, 10) || 1
+    var match = null
+    for (var i = 0; i < episodes.length; i++) {
+      if (episodes[i].number === epNum) { match = episodes[i]; break }
+    }
+    if (!match) return res.json({ sources: [], error: 'Episode ' + epNum + ' not found' })
+
+    var wr = await fetch('https://anime-api-nu-eight.vercel.app/watch?id=' + encodeURIComponent(match.id) + '&provider=AnimeSaturn', {
+      headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10000)
+    })
+    if (!wr.ok) return res.json({ sources: [], error: 'Watch failed' })
+    var watchData = await wr.json()
+    var sources = (watchData.sources || []).map(function(s) {
+      return { url: s.url, quality: s.quality || 'HD', type: s.isM3U8 ? 'hls' : (s.type || 'hls') }
+    })
+    var tracks = (watchData.tracks || []).map(function(t) {
+      return { file: t.file, label: t.label || 'English' }
+    })
+
+    res.json({ sources: sources, tracks: tracks })
+  } catch (e) {
+    res.json({ sources: [], error: e.message })
+  }
+})
+
+// ===== HDHub (Stremio addon, direct MKV + HLS with subtitles) =====
+router.get('/hdhub', async function(req, res) {
+  try {
+    var { tmdbId, season, episode, type } = req.query
+    if (!tmdbId) return res.json({ sources: [] })
+    var mediaType = type || 'tv'
+
+    var extData
+    try {
+      extData = await tmdbFetch(mediaType + '/' + tmdbId + '/external_ids')
+    } catch (e) {
+      return res.json({ sources: [], error: 'TMDB lookup failed' })
+    }
+    var imdbId = extData && extData.imdb_id
+    if (!imdbId) return res.json({ sources: [], error: 'No IMDB ID' })
+
+    var hdUrl = mediaType === 'movie'
+      ? 'https://hdhub.thevolecitor.qzz.io/stream/movie/' + imdbId + '.json'
+      : 'https://hdhub.thevolecitor.qzz.io/stream/series/' + imdbId + ':' + season + ':' + episode + '.json'
+
+    var hdResp
+    try {
+      hdResp = await fetchWithTimeout(hdUrl, {
+        headers: { 'User-Agent': UA }
+      }, 10000)
+    } catch (e) {
+      return res.json({ sources: [], error: 'HDHub timeout' })
+    }
+    if (!hdResp.ok) return res.json({ sources: [], error: 'HDHub status ' + hdResp.status })
+    var hdData = await hdResp.json()
+    var items = hdData && hdData.streams ? hdData.streams : []
+
+    var sources = []
+    var tracks = []
+    var seenUrls = {}
+
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i]
+      var url = item.url || ''
+      if (!url) continue
+      if (url.indexOf('/login.php') > -1) continue
+      if (url.indexOf('.zip') > -1) continue
+      if (url.indexOf('.rar') > -1) continue
+      if (seenUrls[url]) continue
+      seenUrls[url] = true
+
+      var quality = 'HD'
+      var name = item.name || ''
+      var qm = name.match(/(\d{3,4}p)/i)
+      if (qm) quality = qm[1]
+      else if (name.match(/4[kK]/i)) quality = '4K'
+      else if (name.match(/2160/i)) quality = '2160p'
+      else if (name.match(/1080/i)) quality = '1080p'
+      else if (name.match(/720/i)) quality = '720p'
+
+      var streamType = url.indexOf('.m3u8') > -1 ? 'hls' : 'mp4'
+      var headers = item.behaviorHints && item.behaviorHints.proxyHeaders && item.behaviorHints.proxyHeaders.request
+
+      // Extract subtitles if present
+      if (item.subtitles && item.subtitles.length) {
+        for (var si = 0; si < item.subtitles.length; si++) {
+          var sub = item.subtitles[si]
+          if (sub.url && sub.lang) {
+            // Deduplicate subtitles
+            var dup = false
+            for (var ti = 0; ti < tracks.length; ti++) {
+              if (tracks[ti].file === sub.url) { dup = true; break }
+            }
+            if (!dup) {
+              tracks.push({ file: sub.url, label: sub.lang === 'en' ? 'English' : (sub.lang || 'Unknown') })
+            }
+          }
+        }
+      }
+
+      sources.push({
+        url: url,
+        quality: quality,
+        type: streamType,
+        headers: headers || undefined,
+        _provider: name.split(' ')[0] || 'HDHub'
+      })
+    }
+
+    res.json({ sources: sources, tracks: tracks })
   } catch (e) {
     res.json({ sources: [], error: e.message })
   }

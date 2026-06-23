@@ -17,7 +17,7 @@ app.use((req, res, next) => {
 })
 
 const PROVIDERS = ['Hianime', 'AnimePahe', 'AnimeSaturn', 'AnimeUnity', 'AnimeKai', 'KickAssAnime']
-const WORKER_FETCH = 'https://anim-proxy.ahaantadi.workers.dev/fetch'
+const WORKER_FETCH = 'https://anim-proxy-worker.ahaantadi.workers.dev/fetch'
 const REF_MAP = {
   AnimeSaturn: 'https://www.animesaturn.cx',
   AnimePahe: 'https://animepahe.ru',
