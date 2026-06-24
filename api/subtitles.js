@@ -36,10 +36,9 @@ router.get('/', async function(req, res) {
 
     // 1) Try Miruro-API OpenSubtitles proxy
     try {
-      var osUrl = MIRURO_API + '/subtitles/search?languages=' + lang +
-        '&season_number=' + (season || 1) + '&episode_number=' + (episode || 1)
-      if (tmdbId) osUrl += '&tmdb_id=' + tmdbId
+      var osUrl = MIRURO_API + '/subtitles/search?languages=' + lang
       if (parentImdbId) osUrl += '&parent_imdb_id=' + parentImdbId
+      if (tmdbId) osUrl += '&tmdb_id=' + tmdbId
 
       var osResp = await fetch(osUrl, {
         headers: { 'User-Agent': UA, 'Referer': 'https://miruro.tv/', 'Origin': 'https://miruro.tv' },
@@ -49,12 +48,20 @@ router.get('/', async function(req, res) {
       if (osResp.ok) {
         var osData = await osResp.json()
         var list = osData && osData.data ? osData.data : []
-        if (list.length) {
-          var best = list[0]
-          for (var i = 0; i < list.length; i++) {
-            var a = list[i].attributes || {}
-            if (a.subtitle_format === 'vtt') { best = list[i]; break }
-          }
+        // Try to match subtitle to specific episode by release name
+        var epNum = parseInt(episode, 10)
+        var best = null
+        for (var i = 0; i < list.length; i++) {
+          var a = list[i].attributes || {}
+          var release = (a.release || a.slug || '').toLowerCase()
+          var match = release.match(/\b0*(\d+)\b/)
+          var isMatch = !epNum || (match && parseInt(match[1], 10) === epNum)
+          if (!best || (a.subtitle_format === 'vtt' && isMatch)) { best = list[i] }
+          if (isMatch && !best) { best = list[i] }
+          if (isMatch && a.subtitle_format === 'vtt') break
+        }
+        if (!best) best = list[0]
+        if (best) {
           var attrs = best.attributes || {}
           var files = attrs.files || []
           var fileId = files.length ? (files[0].file_id || 0) : 0
