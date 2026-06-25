@@ -34,6 +34,25 @@ async function proxyFetch(url, headers, ms) {
   return resp.text()
 }
 
+// ===== Miruro-API proxy (CORS-free, server-to-server) =====
+const MIRURO_BASE = 'https://miruro-api-navy.vercel.app'
+
+router.get('/miruro', async function(req, res) {
+  try {
+    var path = req.query.path
+    if (!path) return res.status(400).json({ error: 'missing path' })
+    var resp = await fetch(MIRURO_BASE + '/' + path, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(20000)
+    })
+    if (!resp.ok) return res.status(resp.status).json({ error: 'Miruro upstream: ' + resp.status })
+    var data = await resp.json()
+    res.json(data)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ===== VidLink Provider (self-hosted, via enc-dec.app + vidlink.pro) =====
 router.get('/vidlink', async function(req, res) {
   try {
