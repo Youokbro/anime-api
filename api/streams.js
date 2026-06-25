@@ -538,12 +538,25 @@ router.get('/hdhub', async function(req, res) {
         }
       }
 
+      var origUrl = url
+
+      // Add direct URL (works for R2 and PixelDrain sources)
       sources.push({
-        url: url,
+        url: origUrl,
         quality: quality,
         type: streamType,
         headers: headers || undefined,
-        _provider: name.split(' ')[0] || 'HDHub'
+        _provider: (name.split(' ')[0] || 'HDHub')
+      })
+
+      // Also add CF Worker-proxied version (handles expired tokens, adds CORS)
+      var proxyBase = 'https://anim-proxy-worker.ahaantadi.workers.dev/proxy?url='
+      var proxiedUrl = proxyBase + encodeURIComponent(origUrl) + '&referer=' + encodeURIComponent('https://hdhub.thevolecitor.qzz.io')
+      sources.push({
+        url: proxiedUrl,
+        quality: quality,
+        type: streamType,
+        _provider: 'CF-' + (name.split(' ')[0] || 'HDHub')
       })
     }
 
