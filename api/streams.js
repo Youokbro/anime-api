@@ -553,4 +553,83 @@ router.get('/hdhub', async function(req, res) {
   }
 })
 
+// ===== Consumet-All: tries ALL Consumet providers for a given anime =====
+var CONSUMET_PROVIDERS = ['Hianime', 'AnimePahe', 'AnimeSaturn', 'AnimeUnity', 'AnimeKai', 'KickAssAnime']
+
+router.get('/consumet-all', async function(req, res) {
+  try {
+    var { tmdbId, season, episode, type } = req.query
+    if (!tmdbId) return res.json({ sources: [], error: 'missing tmdbId' })
+    var mediaType = type || 'tv'
+
+    // Get title from TMDB
+    var searchTerms = []
+    try {
+      var showData = await tmdbFetch(mediaType + '/' + tmdbId)
+      var names = [showData.name, showData.title, showData.original_name, showData.original_title].filter(Boolean)
+      var seen = {}
+      for (var ni = 0; ni < names.length; ni++) {
+        if (!seen[names[ni]]) { searchTerms.push(names[ni]); seen[names[ni]] = true }
+      }
+    } catch (e) {}
+    if (!searchTerms.length) return res.json({ sources: [], error: 'No title from TMDB' })
+
+    var backend = 'https://anime-api-nu-eight.vercel.app'
+    var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    var epNum = parseInt(episode, 10) || 1
+
+    // Run all providers in parallel
+    var tasks = CONSUMET_PROVIDERS.filter(function(p) { return p !== 'AnimeSama' }).map(function(prov) {
+      return (async function() {
+        try {
+          var sr = await fetch(backend + '/search?q=' + encodeURIComponent(searchTerms[0]) + '&_force=' + encodeURIComponent(prov), {
+            headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(8000)
+          })
+          if (!sr.ok) return null
+          var sd = await sr.json()
+          var results = sd.results || []
+          if (!results.length) return null
+          var animeId = results[0].id
+
+          var ir = await fetch(backend + '/info?id=' + encodeURIComponent(animeId) + '&provider=' + encodeURIComponent(prov), {
+            headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(8000)
+          })
+          if (!ir.ok) return null
+          var infoData = await ir.json()
+          var eps = infoData.episodes || []
+          var match = null
+          for (var ei = 0; ei < eps.length; ei++) {
+            if (eps[ei].number === epNum) { match = eps[ei]; break }
+          }
+          if (!match) return null
+
+          var wr = await fetch(backend + '/watch?id=' + encodeURIComponent(match.id) + '&provider=' + encodeURIComponent(prov), {
+            headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000)
+          })
+          if (!wr.ok) return null
+          var watchData = await wr.json()
+          var sources = (watchData.sources || []).map(function(s) {
+            return { url: s.url, quality: s.quality || 'HD', type: s.isM3U8 ? 'hls' : (s.type || 'hls'), _provider: prov }
+          })
+          return { sources: sources, tracks: watchData.tracks || [] }
+        } catch (e) { return null }
+      })()
+    })
+
+    var results = await Promise.all(tasks)
+    var allSources = []
+    var allTracks = []
+    for (var ri = 0; ri < results.length; ri++) {
+      if (results[ri]) {
+        if (results[ri].sources) allSources = allSources.concat(results[ri].sources)
+        if (results[ri].tracks) allTracks = allTracks.concat(results[ri].tracks)
+      }
+    }
+
+    res.json({ sources: allSources, tracks: allTracks })
+  } catch (e) {
+    res.json({ sources: [], error: e.message })
+  }
+})
+
 export default router
