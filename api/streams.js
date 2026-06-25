@@ -540,26 +540,17 @@ router.get('/hdhub', async function(req, res) {
 
       // Skip dead URL patterns: worker.dev tokens (always 403), hubcloud challenge pages
       var urlHost = url.split('/')[2] || ''
-      var isDeadPattern = urlHost.indexOf('workers.dev') > -1 || urlHost.indexOf('hubcloud') > -1
 
-      // Only add stable URLs: R2 and PixelDrain work, HLS goes to server dropdown
-      if (streamType === 'hls' || urlHost.indexOf('r2.dev') > -1 || urlHost.indexOf('pixeldrain') > -1) {
-        sources.push({
-          url: url,
-          quality: quality,
-          type: streamType,
-          headers: headers || undefined,
-          _provider: (name.split(' ')[0] || 'HDHub')
-        })
-        // Also add CF Worker-proxied version
+      if (streamType === 'hls') {
+        // HLS always goes to server dropdown — include all
+        sources.push({ url: url, quality: quality, type: streamType, headers: headers || undefined, _provider: (name.split(' ')[0] || 'HDHub') })
         var proxyBase = 'https://anim-proxy-worker.ahaantadi.workers.dev/proxy?url='
-        var proxiedUrl = proxyBase + encodeURIComponent(url) + '&referer=' + encodeURIComponent('https://hdhub.thevolecitor.qzz.io')
-        sources.push({
-          url: proxiedUrl,
-          quality: quality,
-          type: streamType,
-          _provider: 'CF-' + (name.split(' ')[0] || 'HDHub')
-        })
+        sources.push({ url: proxyBase + encodeURIComponent(url) + '&referer=' + encodeURIComponent('https://hdhub.thevolecitor.qzz.io'), quality: quality, type: streamType, _provider: 'CF-' + (name.split(' ')[0] || 'HDHub') })
+      } else if (urlHost.indexOf('r2.dev') > -1 || urlHost.indexOf('pixeldrain') > -1) {
+        // MKV direct links — only stable hosts (R2, PixelDrain)
+        sources.push({ url: url, quality: quality, type: streamType, headers: headers || undefined, _provider: (name.split(' ')[0] || 'HDHub') })
+        var proxyBase = 'https://anim-proxy-worker.ahaantadi.workers.dev/proxy?url='
+        sources.push({ url: proxyBase + encodeURIComponent(url) + '&referer=' + encodeURIComponent('https://hdhub.thevolecitor.qzz.io'), quality: quality, type: streamType, _provider: 'CF-' + (name.split(' ')[0] || 'HDHub') })
       }
     }
 
