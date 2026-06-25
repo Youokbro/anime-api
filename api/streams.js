@@ -538,26 +538,29 @@ router.get('/hdhub', async function(req, res) {
         }
       }
 
-      var origUrl = url
+      // Skip dead URL patterns: worker.dev tokens (always 403), hubcloud challenge pages
+      var urlHost = url.split('/')[2] || ''
+      var isDeadPattern = urlHost.indexOf('workers.dev') > -1 || urlHost.indexOf('hubcloud') > -1
 
-      // Add direct URL (works for R2 and PixelDrain sources)
-      sources.push({
-        url: origUrl,
-        quality: quality,
-        type: streamType,
-        headers: headers || undefined,
-        _provider: (name.split(' ')[0] || 'HDHub')
-      })
-
-      // Also add CF Worker-proxied version (handles expired tokens, adds CORS)
-      var proxyBase = 'https://anim-proxy-worker.ahaantadi.workers.dev/proxy?url='
-      var proxiedUrl = proxyBase + encodeURIComponent(origUrl) + '&referer=' + encodeURIComponent('https://hdhub.thevolecitor.qzz.io')
-      sources.push({
-        url: proxiedUrl,
-        quality: quality,
-        type: streamType,
-        _provider: 'CF-' + (name.split(' ')[0] || 'HDHub')
-      })
+      // Only add stable URLs: R2 and PixelDrain work, HLS goes to server dropdown
+      if (streamType === 'hls' || urlHost.indexOf('r2.dev') > -1 || urlHost.indexOf('pixeldrain') > -1) {
+        sources.push({
+          url: url,
+          quality: quality,
+          type: streamType,
+          headers: headers || undefined,
+          _provider: (name.split(' ')[0] || 'HDHub')
+        })
+        // Also add CF Worker-proxied version
+        var proxyBase = 'https://anim-proxy-worker.ahaantadi.workers.dev/proxy?url='
+        var proxiedUrl = proxyBase + encodeURIComponent(url) + '&referer=' + encodeURIComponent('https://hdhub.thevolecitor.qzz.io')
+        sources.push({
+          url: proxiedUrl,
+          quality: quality,
+          type: streamType,
+          _provider: 'CF-' + (name.split(' ')[0] || 'HDHub')
+        })
+      }
     }
 
     res.json({ sources: sources, tracks: tracks })
