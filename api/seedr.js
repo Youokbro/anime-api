@@ -87,30 +87,34 @@ router.post('/delete', async function(req, res) {
 
 router.post('/cleanup', async function(req, res) {
   try {
-    var root = await seedrFetch('GET', '/fs/folder/0/contents')
-    if (!root.data) return res.json({ ok: true, deleted: 0 })
-    var data = root.data
     var count = 0
-    // Delete active torrents one by one via task endpoint
-    var torrents = data.torrents || []
-    for (var i = 0; i < torrents.length; i++) {
-      var tid = torrents[i].id
-      if (tid) {
-        try {
-          await seedrFetch('DELETE', '/tasks/' + tid)
-          count++
-        } catch (e) {}
+    // Delete active tasks from /tasks endpoint (where Seedr stores active downloads)
+    var tasksResp = await seedrFetch('GET', '/tasks')
+    if (tasksResp.data && tasksResp.data.torrents) {
+      var tasks = tasksResp.data.torrents
+      for (var i = 0; i < tasks.length; i++) {
+        var tid = tasks[i].id
+        if (tid) {
+          try {
+            await seedrFetch('DELETE', '/tasks/' + tid)
+            count++
+          } catch (e) {}
+        }
       }
     }
-    // Batch delete folders, files
-    var batchItems = []
-    ;(data.folders || []).forEach(function(f) { batchItems.push({ type: 'folder', id: f.id }) })
-    ;(data.files || []).forEach(function(f) { batchItems.push({ type: 'file', id: f.id }) })
-    if (batchItems.length) {
-      try {
-        await seedrFetch('POST', '/fs/batch/delete', { delete_arr: JSON.stringify(batchItems) })
-        count += batchItems.length
-      } catch (e) {}
+    // Also clean up filesystem (folders/files from previous downloads)
+    var root = await seedrFetch('GET', '/fs/folder/0/contents')
+    if (root.data) {
+      var data = root.data
+      var batchItems = []
+      ;(data.folders || []).forEach(function(f) { batchItems.push({ type: 'folder', id: f.id }) })
+      ;(data.files || []).forEach(function(f) { batchItems.push({ type: 'file', id: f.id }) })
+      if (batchItems.length) {
+        try {
+          await seedrFetch('POST', '/fs/batch/delete', { delete_arr: JSON.stringify(batchItems) })
+          count += batchItems.length
+        } catch (e) {}
+      }
     }
     res.json({ ok: true, deleted: count })
   } catch (e) { res.status(500).json({ error: e.message }) }
