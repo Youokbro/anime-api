@@ -40,12 +40,12 @@ router.get('/callback', async function(req, res) {
     })
     var data = await resp.json()
     if (data.access_token) {
-      res.redirect(FRONTEND + '#access_token=' + data.access_token)
+      res.type('html').send('<script>location.href="' + FRONTEND + '#access_token=' + data.access_token + '"</script>')
     } else {
-      res.redirect(FRONTEND + '#error=' + encodeURIComponent(data.error || 'token exchange failed'))
+      res.type('html').send('<script>location.href="' + FRONTEND + '#error=' + encodeURIComponent(data.error || 'token exchange failed') + '"</script>')
     }
   } catch (e) {
-    res.redirect(FRONTEND + '#error=' + encodeURIComponent(e.message))
+    res.type('html').send('<script>location.href="' + FRONTEND + '#error=' + encodeURIComponent(e.message) + '"</script>')
   }
 })
 
