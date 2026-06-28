@@ -4,6 +4,7 @@ import torrentRouter from './torrent.js'
 import seedrRouter from './seedr.js'
 import streamsRouter from './streams.js'
 import subtitlesRouter from './subtitles.js'
+import anilistRouter from './anilist.js'
 
 const app = express()
 app.use(express.json())
@@ -211,5 +212,7 @@ app.use('/torrent', torrentRouter)
 app.use('/seedr', seedrRouter)
 app.use('/stream', streamsRouter)
 app.use('/subtitles', subtitlesRouter)
+app.use('/api/anilist', anilistRouter)
+
 
 export default app
